@@ -1,12 +1,25 @@
 #include <iostream>
 #include <vector>
 #include <assert.h>
+#include <sstream>
 
 #include "BinaryReader.h"
 #include "ModelData.h"
 #include "ModelWriter.h"
 
 #define CHECK(expr) { bool v = expr; assert(v); }
+
+
+template <typename T>
+std::ostream& operator<<(std::ostream& lhs, const std::vector<T>& rhs)
+{
+	std::cout << rhs.size() << " items:" << std::endl;
+
+	for (unsigned int i = 0; i < rhs.size(); i++)
+		lhs << "  " << i << ": " << rhs.at(i) << std::endl;
+
+	return lhs;
+}
 
 std::vector<std::string> read_string_list(BinaryReader& r)
 {
@@ -20,6 +33,22 @@ std::vector<std::string> read_string_list(BinaryReader& r)
 	return strings;
 }
 
+std::vector<uint32_t> seek_and_read_section_list(BinaryReader& r)
+{
+	r.seek(0x24);
+	uint32_t n_sections = r.read_uint32_LE();
+	uint32_t sections_start = r.read_uint32_LE();
+	r.seek(sections_start);
+
+	std::vector<uint32_t> positions;
+	for (unsigned int i = 0; i < n_sections; i++)
+	{
+		positions.push_back(r.read_uint32_LE());
+	}
+
+	return positions;
+}
+
 // assumes reader is at the start of the header
 ModelData read_verts(BinaryReader& r)
 {
@@ -29,6 +58,7 @@ ModelData read_verts(BinaryReader& r)
 	r.read(&header, sizeof(header));
 	//CHECK(header.unknown3 == 1 || header.unknown3 == 2);
 	CHECK(header.vertex_data_start_offset == 0x28);
+	CHECK((header.unknown[1] == 3 || header.unknown[1] == 4));
 	std::cout << "data at 0x" << std::hex << header_start << std::dec << "\n";
 	std::cout << header << "\n";
 
@@ -36,9 +66,7 @@ ModelData read_verts(BinaryReader& r)
 	ModelData data;
 	data.n_vertices = header.n_vertices;
 	data.vert_stride = header.vertex_data_stride;
-	//data.index_type = (ModelData::IndexType) header.unknown3;
-	//data.index_type = ModelData::INDEX_TRIANGLES;
-	data.index_type = ModelData::INDEX_TRIANGLE_STRIP;
+	data.index_type = (ModelData::IndexType) header.unknown[1];
 
 	data.vert_data.resize(header.n_vertices * header.vertex_data_stride / sizeof(float));
 	r.seek(header_start + header.vertex_data_start_offset);
@@ -51,25 +79,38 @@ ModelData read_verts(BinaryReader& r)
 	return data;
 }
 
-template <typename T>
-std::ostream& operator<<(std::ostream& lhs, const std::vector<T>& rhs)
+void process_file(const std::string& path)
 {
-	std::cout << rhs.size() << " items:" << std::endl;
+	BinaryReader reader;
+	reader.open(path);
+	CHECK(reader.read_chars(4) == "MDLT");
+	const uint32_t string_list_pos = reader.read_uint32_LE();
+	const std::vector<uint32_t> sections = seek_and_read_section_list(reader);
+	std::cout << std::hex << sections << std::dec << "\n";
 
-	for (unsigned int i = 0; i < rhs.size(); i++)
-		lhs << "  " << i << ": " << rhs.at(i) << std::endl;
+	for (unsigned int i = 0; i < sections.size(); i++)
+	{
+		reader.seek(sections[i]);
+		ModelData model = read_verts(reader);
 
-	return lhs;
+		std::stringstream ss;
+		ss << path << "-" << (i) << ".obj";
+
+		std::cout << "Exporting model " << i << " as " << ss.str() << "...\n";
+		ModelWriter::write_obj(ss.str(), model);
+	}
 }
 
 int main()
 {
-	BinaryReader reader;
+	process_file("skin109/blk_red.model");
+
+	/*BinaryReader reader;
 	reader.open("blk_red.model");
 
 	CHECK(reader.read_chars(4) == "MDLT");
 
-	const uint32_t string_list_pos = reader.read_uint32_LE();
+	const uint32_t string_list_pos = reader.read_uint32_LE();*/
 
 	// print string list
 	/*reader.seek(string_list_pos);
@@ -107,9 +148,9 @@ int main()
 	ModelWriter::write_obj("blk_red3.obj", data);*/
 
 	// blk_red.model pt4
-	reader.seek(0x3558);  // 03000000 00007800 = (0x78 = 128)
+	/*reader.seek(0x3558);  // 03000000 00007800 = (0x78 = 128)
 	ModelData data = read_verts(reader);
-	ModelWriter::write_obj("blk_red4.obj", data);
+	ModelWriter::write_obj("blk_red4.obj", data);*/
 
 	/*
 	00000404 = 1028

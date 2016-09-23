@@ -34,8 +34,8 @@ inline std::ostream& operator<<(std::ostream& stream, const VertHeader& header) 
 struct ModelData
 {
 	enum IndexType : int32_t {
-		INDEX_TRIANGLE_STRIP = 1,
-		INDEX_TRIANGLES = 2
+		INDEX_TRIANGLES = 3,
+		INDEX_TRIANGLE_STRIP = 4
 	};
 
 	uint32_t n_vertices;
