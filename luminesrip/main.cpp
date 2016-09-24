@@ -2,6 +2,7 @@
 #include <vector>
 #include <assert.h>
 #include <sstream>
+#include <Windows.h>
 
 #include "BinaryReader.h"
 #include "ModelData.h"
@@ -21,14 +22,18 @@ std::ostream& operator<<(std::ostream& lhs, const std::vector<T>& rhs)
 	return lhs;
 }
 
-std::vector<std::string> read_string_list(BinaryReader& r)
+std::vector<std::string> seek_and_read_string_list(BinaryReader& r)
 {
+	r.seek(0x4);
+	const uint32_t string_list_pos = r.read_uint32_LE();
+	r.seek(string_list_pos);
+
 	std::vector<std::string> strings;
-	std::cout << r.length() << std::endl;
 	while (r.good() && r.cur_pos() < r.length())
 	{
+		std::cout << "  " << std::hex << (r.cur_pos() - string_list_pos) << std::dec << ": ";
 		strings.push_back(r.read_string());
-		std::cout << strings.back() << std::endl;
+		std::cout << strings.back() << "\n";
 	}
 	return strings;
 }
@@ -62,19 +67,27 @@ ModelData read_verts(BinaryReader& r)
 	std::cout << "data at 0x" << std::hex << header_start << std::dec << "\n";
 	std::cout << header << "\n";
 
-	// rip the verts
 	ModelData data;
 	data.n_vertices = header.n_vertices;
 	data.vert_stride = header.vertex_data_stride;
 	data.index_type = (ModelData::IndexType) header.unknown[1];
 
+	// rip the verts
 	data.vert_data.resize(header.n_vertices * header.vertex_data_stride / sizeof(float));
 	r.seek(header_start + header.vertex_data_start_offset);
 	r.read(data.vert_data.data(), header.n_vertices * header.vertex_data_stride);
 
+	// rip indices
 	data.vert_indices.resize(header.n_indices);
 	r.seek(header_start + header.index_data_start_offset);
 	r.read(data.vert_indices.data(), header.n_indices * sizeof(int16_t));
+
+	// read that unknown extra data
+	r.seek(header_start + header.unknown4);
+	std::cout << std::hex;
+	std::cout << "End of Data 0x00: " << r.read_uint32_LE() << "\n";
+	std::cout << "            0x04: " << r.read_uint32_LE() << "\n";
+	std::cout << std::dec;
 
 	return data;
 }
@@ -84,7 +97,8 @@ void process_file(const std::string& path)
 	BinaryReader reader;
 	reader.open(path);
 	CHECK(reader.read_chars(4) == "MDLT");
-	const uint32_t string_list_pos = reader.read_uint32_LE();
+
+	seek_and_read_string_list(reader);
 	const std::vector<uint32_t> sections = seek_and_read_section_list(reader);
 	std::cout << std::hex << sections << std::dec << "\n";
 
@@ -103,7 +117,7 @@ void process_file(const std::string& path)
 
 int main()
 {
-	process_file("skin109/blk_red.model");
+	process_file("blk_red.model");
 
 	/*BinaryReader reader;
 	reader.open("blk_red.model");
@@ -131,6 +145,75 @@ int main()
 	// some sort of list of headers at 0x78
 	// 0x78 is referenced at 0x28
 	// B80B0000 EC130000 242A0000 58350000
+
+	// 0xA0 starts referencing the textures (*.gxt) in a list:
+	// texture path string list offsets: 0x14, 0x1F, 0x28, 0x34, 0x40
+
+	/* 
+	        Strings
+	0:   www.rocketstd.co.jp
+	14:  window.gxt
+	1f:  noiz.gxt
+	28:  cube_02.gxt
+	34:  ref_913.gxt
+	40:  spblk_dummy.gxt
+	50:  frame
+	56:  CgFX/blk_red{frame}.cgfx
+	6f:  default
+	77:  blk_red{frame}_cgfx_VS.gxp
+	92:  blk_red{frame}_cgfx_PS.gxp
+	ad:  g_Opacity
+	b7: 
+	b8:  g_diffuseColorSelect
+	cd:  k_d
+	d1:  g_emissionColor
+	e1:  g_diffuseAttenuation
+	f6:  g_ambientLightColor
+	10a: g_colorRimSpecular
+	11d: g_rimSpecularPower
+	130: g_rimSpecularSelfLuminous
+	14a: g_glossColorSelect
+	15d: g_MorphMaskTexturemapChannel
+	17a: LightD0_En
+	185: LightD1_En
+	190: front_ATTR_ADD_
+	1a0: CgFX/blk_red{front_ATTR_ADD_}.cgfx
+	1c3: blk_red{front_ATTR_ADD_}_cgfx_VS.gxp
+	1e8: blk_red{front_ATTR_ADD_}_cgfx_PS.gxp
+	20d: g_BottomUVScroll
+	21e: g_MidUVScroll
+	22c: g_ReflectColor
+	23b: gray
+	240: CgFX/blk_red{gray}.cgfx
+	258: blk_red{gray}_cgfx_VS.gxp
+	272: blk_red{gray}_cgfx_PS.gxp
+	28c: inner
+	292: CgFX/blk_red{inner}.cgfx
+	2ab: blk_red{inner}_cgfx_VS.gxp
+	2c6: blk_red{inner}_cgfx_PS.gxp
+	2e1: inner_block
+	2ed: CgFX/blk_red{inner_block}.cgfx
+	30c: blk_red{inner_block}_cgfx_VS.gxp
+	32d: blk_red{inner_block}_cgfx_PS.gxp
+	34e: k_s
+	352: g_SpecularPower
+	362: blk_SP_ATTR_BLE_
+	373: CgFX/blk_red{blk_SP_ATTR_BLE_}.cgfx
+	397: blk_red{blk_SP_ATTR_BLE_}_cgfx_VS.gxp
+	3bd: blk_red{blk_SP_ATTR_BLE_}_cgfx_PS.gxp
+	3e3: _4_sp02
+	3eb: _2_innerbox01
+	3f9: _1_inner02
+	404: _3_box02
+	40d: rkt_root
+	416: none
+	41b: block001_red
+	428: block001_red-node
+	43a: _1_inner02-node
+	44a: _2_innerbox01-node
+	45d: _3_box02-node
+	46b: _4_sp02-node
+	*/
 
 	// blk_red.model pt1
 	/*reader.seek(0xBB8);  //  0x8 of extra data - 04000000 00008200 (0x82 = 130)
@@ -166,7 +249,9 @@ int main()
 	*/
 
 	std::cout << "DONE\n";
-	while (true);
+	while (true) {
+		Sleep(500);
+	}
 	return 0;
 }
 
@@ -177,7 +262,7 @@ int main()
 // blk_del.model
 // header starts: 0x494
 // 0x00000014  = 20
-// 0x00000003  = 3
+// 0x00000003  = 3 - seems to switch tri/tri strip...
 // 0x0000011B  = 283
 // 0x00000038  - vertex data stride
 // 0x0000008C  - number of vertices

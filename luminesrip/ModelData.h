@@ -25,9 +25,10 @@ inline std::ostream& operator<<(std::ostream& stream, const VertHeader& header) 
 		   << "n_vertices:    " << header.n_vertices << "\n"
 		   << "n_indices:     " << header.n_indices << "\n"
 		   << "unknown3:      " << header.unknown3 << "\n"
-		   << "verts_offset:  " << header.vertex_data_start_offset << "\n"
-		   << "index_offset:  " << header.index_data_start_offset << "\n"
-		   << "unknown4:      " << header.unknown4 << "";
+		   << std::hex
+		   << "verts_offset:  0x" << header.vertex_data_start_offset << "\n"
+		   << "index_offset:  0x" << header.index_data_start_offset << "\n"
+		   << "unknown4:      0x" << header.unknown4 << "";
 	return stream;
 }
 
